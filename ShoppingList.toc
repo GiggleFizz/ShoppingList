@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: Shopping List
+## Notes: Shift-click recipes in any trade-skill window to queue them; see every reagent you need, what you have, and drill any craftable reagent down to its own inputs.
+## Author: GiggleFizz (with Claude)
+## Version: 1.0.0
+## SavedVariablesPerCharacter: ShoppingListDB
+
+ShoppingListData.lua
+ShoppingList.lua

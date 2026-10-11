@@ -112,3 +112,37 @@ row that assumes "character lacks X" must be read against the realm's rules
 first (11 professions each: nobody lacks anything).
 
 **Published 2026-10-08 as 1.0.0** (GiggleFizz/ShoppingList, MIT; his standard: 1.0.0 = first publication). Runtime = 0.2.2 unchanged.
+
+# Shopping List 1.1.0 — Minimap button (FIELD-CLOSED 2026-10-11, rows 3.1-3.8 + P3.1-P3.2 PASS first run; endorsed "lets go"; rulings A toggle, B left-drag, C clear at once, D per character, E a note, F publishable)
+
+**Requirement.** A minimap button: left-click opens the list, right-click clears the
+current list. Present from login on every character.
+
+**Evidence.** SpellClusters.lua:600-647 (button on Minimap, TrackingBorder ring, 20 px icon,
+angle on an 80 px radius persisted in SavedVariables, drag re-derives the angle from
+GetCursorPosition / Minimap:GetCenter / GetEffectiveScale). SL.Toggle (ShoppingList.lua:575),
+SL.Clear (:114), ShoppingListDB per character (toc). Textures verified present in
+Data/enUS/locale-enUS.MPQ: Interface/Icons/INV_Misc_Note_01.blp,
+Interface/Minimap/MiniMap-TrackingBorder.blp.
+
+**Design.** MakeMinimapButton() on PLAYER_LOGIN (once). 31 px Button on Minimap, strata
+MEDIUM level 8; ring 53 px OVERLAY, icon 20 px BACKGROUND at (7,-5). Clicks LeftButtonUp +
+RightButtonUp: left -> SL.Toggle(); right -> SL.Clear() at once with a chat line "cleared N
+items" ("the list is already empty" when nothing is queued). Drag = LeftButton (right is
+Clear): OnDragStart installs an OnUpdate that writes DB().minimapAngle = atan2(cursor -
+centre) and re-anchors; OnDragStop removes it. Default angle 150 deg (SpellClusters sits at
+200). Tooltip: title, "N items queued", the three actions. README + header comment updated;
+toc 1.1.0. Harness: Minimap/GetCursorPosition/DEFAULT_CHAT_FRAME stubs, S16-S20 (122 checks).
+
+| # | Test | Pass |
+|---|---|---|
+| 3.1 | Log in | Button on the rim, note icon, tracking ring |
+| 3.2 | Left-click, left-click | List opens, then closes |
+| 3.3 | Right-click with items | List empties at once, window refreshes, chat "cleared N items" |
+| 3.4 | Right-click, empty list | "the list is already empty", nothing else |
+| 3.5 | Drag round the rim, /reload | Stays put |
+| 3.6 | Another character | Its own saved spot, or the default |
+| 3.7 | Hover | Tooltip: title, N items queued, three actions |
+| 3.8 | Harness | luac clean, 122/122 |
+| P3.1 | Chrome | Ring + icon match SpellClusters' button; no overlap at the default angle |
+| P3.2 | Drag | Follows the cursor, stays on the rim |

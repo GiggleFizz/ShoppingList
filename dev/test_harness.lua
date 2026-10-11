@@ -52,6 +52,10 @@ function CreateFrame(ftype, name, parent, template)
     function f:EnableMouse(v) self.mouse = v end
     function f:SetClampedToScreen(v) self.clamped = v end
     function f:RegisterForDrag(b) self.drag = b end
+    function f:SetFrameStrata(s) self.strata = s end
+    function f:SetFrameLevel(l) self.level = l end
+    function f:GetCenter() return self.cx or 0, self.cy or 0 end
+    function f:GetEffectiveScale() return 1 end
     function f:StartMoving() self.moving = true end
     function f:StopMovingOrSizing() self.moving = false; self.points = { { "TOPLEFT", UIParent, "TOPLEFT", 123, -45 } } end
     function f:CreateTexture() return Region() end
@@ -63,6 +67,10 @@ function CreateFrame(ftype, name, parent, template)
     if name then _G[name] = f end
     return f
 end
+Minimap = CreateFrame("Frame", "Minimap"); Minimap.cx, Minimap.cy = 1000, 600
+HARNESS_CURSOR = { 1000, 600 }
+function GetCursorPosition() return HARNESS_CURSOR[1], HARNESS_CURSOR[2] end
+DEFAULT_CHAT_FRAME = { AddMessage = function(_, m) LASTMSG = m end }
 HARNESS = { pinged = {}, items = {}, counts = {}, hooks = {}, casts = {}, combat = false, shift = false,
             spells = {}, known = {}, casting = nil, trade = nil, selected = nil, inputBox = nil }
 function HARNESS.OnMacro(m) end
@@ -106,7 +114,7 @@ local before = {}
 for k in pairs(_G) do before[k] = true end
 dofile("ShoppingListData.lua")
 dofile("ShoppingList.lua")
-local allowed = { ShoppingList = 1, ShoppingListData = 1, ShoppingListProfessions = 1, ShoppingListEvents = 1, SLASH_SHOPPINGLIST1 = 1, SLASH_SHOPPINGLIST2 = 1 }
+local allowed = { ShoppingList = 1, ShoppingListData = 1, ShoppingListProfessions = 1, ShoppingListEvents = 1, SLASH_SHOPPINGLIST1 = 1, SLASH_SHOPPINGLIST2 = 1, ShoppingListMinimapButton = 1 }
 local leaked = {}
 for k in pairs(_G) do if not before[k] and not allowed[k] then leaked[#leaked + 1] = k end end
 check("S1 no globals leaked before ADDON_LOADED", #leaked == 0, table.concat(leaked, ","))
@@ -436,6 +444,72 @@ check("S15 recipe known: cast fires", HARNESS.casts[#HARNESS.casts] == "/cast [n
 -- (d) a profession DataStore never scanned -> tri-state nil -> normal row
 check("S15 unscanned profession -> nil (can't say)", SL.RecipeKnown(BBM, "Blacksmithing") == nil)
 DataStore = nil; HARNESS.now = 0; HARNESS.me = nil
+
+-- ================================================= Increment 3: minimap button (1.1.0) --
+local function round(x) return math.floor(x * 1000 + 0.5) / 1000 end
+fire("PLAYER_LOGIN")
+local mb = ShoppingListMinimapButton
+check("S16 button built on PLAYER_LOGIN, on the Minimap, 31 px, strata MEDIUM", mb and mb.parent == Minimap and mb.w == 31 and mb.strata == "MEDIUM")
+check("S16 note icon + tracking ring", mb.icon.texture == "Interface\\Icons\\INV_Misc_Note_01" and mb.ring.texture == "Interface\\Minimap\\MiniMap-TrackingBorder")
+check("S16 left-up and right-up clicks; left drag", mb.clicks[1] == "LeftButtonUp" and mb.clicks[2] == "RightButtonUp" and mb.drag == "LeftButton")
+local p = mb.points[#mb.points]
+check("S16 default angle 150 deg on an 80 px radius", p[2] == Minimap and round(p[4]) == round(80 * math.cos(math.rad(150))) and round(p[5]) == round(80 * math.sin(math.rad(150))), p[4] .. "," .. p[5])
+fire("PLAYER_LOGIN")
+check("S16 a second PLAYER_LOGIN builds no second button", SL.minimap == mb)
+-- toggle
+ShoppingListFrame:Hide()
+mb.scripts.OnClick(mb, "LeftButton")
+check("S17 left-click opens", ShoppingListFrame:IsShown())
+mb.scripts.OnClick(mb, "LeftButton")
+check("S17 left-click again closes", not ShoppingListFrame:IsShown())
+-- clear
+SL.Clear()
+local anyId = next(DATA)
+local anotherId = next(DATA, anyId)
+SL.Add(anyId, 2); SL.Add(anotherId, 1)
+check("S18 two crafts queued", #SL.DB().items == 2)
+LASTMSG = nil
+mb.scripts.OnClick(mb, "RightButton")
+check("S18 right-click clears at once, notice names the count", #SL.DB().items == 0 and LASTMSG and LASTMSG:find("cleared 2 items", 1, true), LASTMSG)
+LASTMSG = nil
+mb.scripts.OnClick(mb, "RightButton")
+check("S18 right-click on an empty list: notice only", #SL.DB().items == 0 and LASTMSG and LASTMSG:find("already empty", 1, true), LASTMSG)
+SL.Add(anyId, 1); LASTMSG = nil
+mb.scripts.OnClick(mb, "RightButton")
+check("S18 singular wording", LASTMSG and LASTMSG:find("cleared 1 item$"), LASTMSG)
+-- drag: cursor straight above the minimap centre -> 90 deg
+HARNESS_CURSOR = { 1000, 700 }
+mb.scripts.OnDragStart(mb)
+check("S19 drag start installs an OnUpdate", mb.scripts.OnUpdate ~= nil)
+mb.scripts.OnUpdate(mb)
+check("S19 angle follows the cursor (90 deg), persisted per character", round(SL.DB().minimapAngle) == 90 and round(ShoppingListDB.minimapAngle) == 90, SL.DB().minimapAngle)
+p = mb.points[#mb.points]
+check("S19 button re-anchored to the rim at 90 deg", round(p[4]) == 0 and round(p[5]) == 80, p[4] .. "," .. p[5])
+HARNESS_CURSOR = { 920, 600 }   -- due left -> 180
+mb.scripts.OnUpdate(mb)
+check("S19 ... and at 180 deg", round(SL.DB().minimapAngle) == 180 and round(mb.points[#mb.points][4]) == -80)
+mb.scripts.OnDragStop(mb)
+check("S19 drag stop removes the OnUpdate", mb.scripts.OnUpdate == nil)
+-- persistence across a reload: a fresh button reads the saved angle
+SL.minimap = nil
+fire("PLAYER_LOGIN")
+local mb2 = ShoppingListMinimapButton
+check("S19 after reload the new button sits at the saved 180 deg", mb2 ~= mb and round(mb2.points[#mb2.points][4]) == -80)
+-- another character: no saved angle -> default
+local savedDB = ShoppingListDB
+ShoppingListDB = nil; SL.minimap = nil
+fire("PLAYER_LOGIN")
+check("S19 a character without a saved angle gets the default 150", round(ShoppingListMinimapButton.points[#ShoppingListMinimapButton.points][5]) == round(80 * math.sin(math.rad(150))))
+ShoppingListDB = savedDB
+-- tooltip
+SL.Clear(); SL.Add(anyId, 1); SL.Add(anotherId, 3)
+GameTooltip.lines = nil
+ShoppingListMinimapButton.scripts.OnEnter(ShoppingListMinimapButton)
+local tl = table.concat(GameTooltip.lines or {}, "|")
+check("S20 tooltip: count + the three actions", GameTooltip.text == "Shopping List" and tl:find("2 items queued", 1, true) and tl:find("Left%-click") and tl:find("Right%-click") and tl:find("Drag"), tl)
+ShoppingListMinimapButton.scripts.OnLeave(ShoppingListMinimapButton)
+check("S20 tooltip hidden on leave", not GameTooltip:IsShown())
+SL.Clear()
 
 io.stderr:write(string.format("Shopping List harness: %d passed, %d failed\n", passed, failed))
 os.exit(failed == 0 and 0 or 1)

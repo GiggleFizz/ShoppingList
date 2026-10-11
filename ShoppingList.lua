@@ -14,14 +14,16 @@
 --     already hold reduce what their inputs must cover
 --   * each craft you complete counts its line down; at 0 it stays as "done"
 --   * hold Shift over a line for its tooltip
+--   * a minimap button: left-click opens/closes the list, right-click clears
+--     it, left-drag slides it round the rim (angle saved per character)
 --
 -- Recipe data (ShoppingListData.lua) is generated from the 3.3.5 Spell.dbc:
 -- every craftable item on the realm, keyed by result item id, names resolved
 -- by the client at runtime so any locale works.
 --
 -- Globals: ShoppingList (addon table), ShoppingListDB (per-character saved
--- variables), ShoppingListFrame (the window), ShoppingListData /
--- ShoppingListProfessions (the data).
+-- variables), ShoppingListFrame (the window), ShoppingListMinimapButton,
+-- ShoppingListData / ShoppingListProfessions (the data).
 
 ShoppingList = ShoppingList or {}
 local SL = ShoppingList
@@ -621,6 +623,69 @@ function SL.OnModifiedItemClick(link)
     if frame and not frame:IsShown() then frame:Show(); DB().shown = true end
 end
 
+-- ------------------------------------------------------- minimap button --
+-- 1.1.0 (rulings A toggle, B left-drag, C clear at once, D per character, E a
+-- note). Same construction as SpellClusters' button: a 31 px button on the
+-- Minimap, the tracking-border ring, a 20 px icon, position = an angle on an
+-- 80 px radius. Default 150 deg sits clear of SpellClusters' 200.
+local MINIMAP_DEFAULT_ANGLE, MINIMAP_RADIUS = 150, 80
+local function Print(msg) (DEFAULT_CHAT_FRAME or ChatFrame1):AddMessage(GOLD .. "Shopping List:|r " .. msg) end
+local function PositionMinimap(btn)
+    local angle = math.rad(DB().minimapAngle or MINIMAP_DEFAULT_ANGLE)
+    btn:ClearAllPoints()
+    btn:SetPoint("CENTER", Minimap, "CENTER", MINIMAP_RADIUS * math.cos(angle), MINIMAP_RADIUS * math.sin(angle))
+end
+SL.PositionMinimap = PositionMinimap
+local function ClearFromButton()
+    local n = #DB().items
+    if n == 0 then Print("the list is already empty"); return end
+    SL.Clear()
+    Print("cleared " .. n .. (n == 1 and " item" or " items"))
+end
+local function MakeMinimapButton()
+    local btn = CreateFrame("Button", "ShoppingListMinimapButton", Minimap)
+    btn:SetWidth(31); btn:SetHeight(31)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:RegisterForDrag("LeftButton")           -- right is Clear, so the drag is left
+    local ring = btn:CreateTexture(nil, "OVERLAY")
+    ring:SetWidth(53); ring:SetHeight(53)
+    ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
+    ring:SetPoint("TOPLEFT")
+    local icon = btn:CreateTexture(nil, "BACKGROUND")
+    icon:SetWidth(20); icon:SetHeight(20)
+    icon:SetTexture("Interface\\Icons\\INV_Misc_Note_01")
+    icon:SetPoint("TOPLEFT", 7, -5)
+    btn.ring, btn.icon = ring, icon
+    btn:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then ClearFromButton() else SL.Toggle() end
+    end)
+    btn:SetScript("OnDragStart", function(self)
+        self:SetScript("OnUpdate", function(self)
+            local mx, my = Minimap:GetCenter()
+            local cx, cy = GetCursorPosition()
+            local s = Minimap:GetEffectiveScale()
+            DB().minimapAngle = math.deg(math.atan2(cy / s - my, cx / s - mx))
+            PositionMinimap(self)
+        end)
+    end)
+    btn:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        local n = #DB().items
+        GameTooltip:SetText("Shopping List", 1, 1, 1)
+        GameTooltip:AddLine(n == 0 and "nothing queued" or (n .. (n == 1 and " item queued" or " items queued")), 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Left-click: open or close the list", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Right-click: clear the list", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Drag: move this button", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    PositionMinimap(btn)
+    return btn
+end
+
 -- --------------------------------------------------------------- wiring --
 local ev = CreateFrame("Frame", "ShoppingListEvents")
 ev:RegisterEvent("ADDON_LOADED")
@@ -646,6 +711,7 @@ ev:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
     elseif event == "PLAYER_LOGIN" then
         if DB().shown then frame:Show() end
+        SL.minimap = SL.minimap or MakeMinimapButton()
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         if arg1 == "player" and arg2 then SL.Crafted(arg2) end
     elseif event == "TRADE_SKILL_SHOW" or event == "TRADE_SKILL_UPDATE" then

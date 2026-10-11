@@ -38,7 +38,10 @@ for anything.
   visited counts towards "have").
 - A **List** button sits on the trade-skill window's title row; `/shop` (or
   `/shoppinglist`) toggles the window too; `/shop clear` empties it.
-- The list, drill-downs and window position are saved per character.
+- A **minimap button**: left-click opens or closes the list, right-click clears
+  it, drag it round the rim to move it.
+- The list, drill-downs, window position and minimap-button position are saved
+  per character.
 
 ## What it knows
 

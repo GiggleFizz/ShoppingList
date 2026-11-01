@@ -36,9 +36,9 @@ DEV_DIR = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.dirname(DEV_DIR)
 LUA_OUT = os.path.join(OUT_DIR, "ShoppingListData.lua")
 MANIFEST = os.path.join(DEV_DIR, "shoppinglist-manifest.tsv")
-DBC_DIR = "/media/linuxdata/WOW_Private/playerbots_server/data/dbc"
-WORLDSERVER_CONF = "/media/linuxdata/WOW_Private/playerbots_server/etc/worldserver.conf"
-sys.path.insert(0, "/home/wizzfizz/workspaces/WoW/dbc-tools")
+DBC_DIR = os.environ.get("ACORE_DBC_DIR", "/media/linuxdata/WOW_Private/playerbots_server/data/dbc")
+WORLDSERVER_CONF = os.environ.get("ACORE_WORLDSERVER_CONF", "/media/linuxdata/WOW_Private/playerbots_server/etc/worldserver.conf")
+sys.path.insert(0, os.path.join(os.environ.get("ACORE_WORKSPACE", "/home/wizzfizz/workspaces/WoW"), "dbc-tools"))
 from wdbc import DBC  # noqa: E402
 
 # Spell.dbc (3.3.5, SpellEntry layout as the core reads it)
